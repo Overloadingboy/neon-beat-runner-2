@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Beat Runner</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0d0d0d;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00ffcc;
+            font-size: 24px;
+            text-shadow: 0 0 10px #00ffcc;
+            pointer-events: none;
+        }
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff0055;
+            font-size: 40px;
+            text-align: center;
+            text-shadow: 0 0 20px #ff0055;
+            display: none;
+            cursor: pointer;
+        }
+        #game-over span {
+            font-size: 20px;
+            color: #fff;
+            text-shadow: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">Score: <span id="scoreText">0</span></div>
+    <div id="game-over">GAME OVER<br><span>Tap or Press Space to Restart</span></div>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreElement = document.getElementById('scoreText');
+    const gameOverScreen = document.getElementById('game-over');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Game Variables
+    let frames = 0;
+    let score = 0;
+    let gameSpeed = 6;
+    let isGameOver = false;
+    const gravity = 0.6;
+
+    // Advanced: Particle System for visual flair
+    let particles = [];
+    class Particle {
+        constructor(x, y, color) {
+            this.x = x;
+            this.y = y;
+            this.size = Math.random() * 5 + 2;
+            this.speedX = Math.random() * 6 - 3;
+            this.speedY = Math.random() * -6 - 2;
+            this.color = color;
+        }
+        update() {
+            this.x += this.speedX;
+            this.y += this.speedY;
+            this.size *= 0.95; // shrink over time
+        }
+        draw() {
+            ctx.fillStyle = this.color;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0; // reset
+        }
+    }
+
+    function createExplosion(x, y, color) {
+        for (let i = 0; i < 15; i++) {
+            particles.push(new Particle(x, y, color));
+        }
+    }
+
+    // Player Object
+    const player = {
+        x: 100,
+        y: canvas.height - 150,
+        width: 40,
+        height: 40,
+        dy: 0,
+        jumpPower: -12,
+        grounded: false,
+        jumpTimer: 0,
+        jumpCount: 0, // Advanced: Double Jump
+        color: '#00ffcc',
+        
+        draw: function() {
+            // Trail effect
+            ctx.fillStyle = 'rgba(0, 255, 204, 0.3)';
+            ctx.fillRect(this.x - 10, this.y + this.dy, this.width, this.height);
+            
+            ctx.fillStyle = this.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = this.color;
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.shadowBlur = 0;
+        },
+        
+        update: function() {
+            // Apply Gravity
+            this.y += this.dy;
+            if (this.y + this.height < canvas.height - 50) {
+                this.dy += gravity;
+                this.grounded = false;
+            } else {
+                this.dy = 0;
+                this.grounded = true;
+                this.y = canvas.height - 50 - this.height;
+                this.jumpCount = 0;
+            }
+            this.draw();
+        },
+        
+        jump: function() {
+            if (this.jumpCount < 2) { // Allow double jump
+                this.dy = this.jumpPower;
+                this.jumpCount++;
+                createExplosion(this.x + this.width/2, this.y + this.height, '#00ffcc');
+            }
+        }
+    };
+
+    // Obstacles Array
+    let obstacles = [];
+    class Obstacle {
+        constructor() {
+            this.height = Math.random() * 40 + 30;
+            this.width = 30;
+            this.x = canvas.width;
+            this.y = canvas.height - 50 - this.height;
+            this.color = '#ff0055';
+        }
+        update() {
+            this.x -= gameSpeed;
+            this.draw();
+        }
+        draw() {
+            ctx.fillStyle = this.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = this.color;
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    // Input handling (Spacebar + Touch)
+    function handleInput(e) {
+        if (e.type === 'keydown' && e.code !== 'Space') return;
+        
+        if (isGameOver) {
+            resetGame();
+        } else {
+            player.jump();
+        }
+    }
+    
+    window.addEventListener('keydown', handleInput);
+    window.addEventListener('touchstart', handleInput);
+
+    // Floor Line
+    function drawFloor() {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height - 50);
+        ctx.lineTo(canvas.width, canvas.height - 50);
+        ctx.stroke();
+    }
+
+    function resetGame() {
+        obstacles = [];
+        particles = [];
+        score = 0;
+        gameSpeed = 6;
+        frames = 0;
+        isGameOver = false;
+        gameOverScreen.style.display = 'none';
+        player.y = canvas.height - 150;
+        player.dy = 0;
+        animate();
+    }
+
+    // Main Game Loop
+    function animate() {
+        if (isGameOver) return;
+        requestAnimationFrame(animate);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        drawFloor();
+        player.update();
+
+        // Handle Particles
+        for (let i = 0; i < particles.length; i++) {
+            particles[i].update();
+            particles[i].draw();
+            if (particles[i].size <= 0.2) {
+                particles.splice(i, 1);
+                i--;
+            }
+        }
+
+        // Spawn Obstacles
+        if (frames % Math.floor(Math.random() * 60 + 60) === 0) {
+            obstacles.push(new Obstacle());
+        }
+
+        // Update Obstacles & Check Collisions
+        for (let i = 0; i < obstacles.length; i++) {
+            obstacles[i].update();
+
+            // Collision Detection (AABB)
+            if (player.x < obstacles[i].x + obstacles[i].width &&
+                player.x + player.width > obstacles[i].x &&
+                player.y < obstacles[i].y + obstacles[i].height &&
+                player.y + player.height > obstacles[i].y) {
+                
+                isGameOver = true;
+                gameOverScreen.style.display = 'block';
+                createExplosion(player.x + player.width/2, player.y + player.height/2, '#ff0055');
+            }
+
+            // Remove off-screen obstacles and increase score
+            if (obstacles[i].x + obstacles[i].width < 0) {
+                obstacles.splice(i, 1);
+                i--;
+                score += 10;
+                scoreElement.innerHTML = score;
+                
+                // Advanced: Increase game speed slightly to match building rhythm
+                if (score % 100 === 0) {
+                    gameSpeed += 0.5;
+                }
+            }
+        }
+        frames++;
+    }
+
+    // Handle Window Resize
+    window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        if(isGameOver) { drawFloor(); player.draw(); }
+    });
+
+    animate();
+</script>
+</body>
+</html>
