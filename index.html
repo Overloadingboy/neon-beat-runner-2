@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Beat Runner - Online</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #00ffcc;
+            font-size: 28px;
+            font-weight: bold;
+            text-shadow: 0 0 10px #00ffcc;
+            pointer-events: none;
+        }
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            cursor: pointer;
+            z-index: 10;
+        }
+        #overlay h1 {
+            color: #00ffcc;
+            text-shadow: 0 0 20px #00ffcc;
+            margin-bottom: 10px;
+        }
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff0055;
+            font-size: 45px;
+            text-align: center;
+            text-shadow: 0 0 25px #ff0055;
+            display: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">SCORE: <span id="scoreText">0</span></div>
+    
+    <div id="overlay" onclick="startGame()">
+        <h1>NEON BEAT RUNNER</h1>
+        <p>TAP TO START & PLAY MUSIC</p>
+    </div>
+
+    <div id="game-over" onclick="resetGame()">
+        GAME OVER<br>
+        <span style="font-size: 20px; color: white; text-shadow: none;">Tap to Restart</span>
+    </div>
+
+    <audio id="bgMusic" loop>
+        <source src="track.mp3" type="audio/mpeg">
+    </audio>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreElement = document.getElementById('scoreText');
+    const gameOverScreen = document.getElementById('game-over');
+    const overlay = document.getElementById('overlay');
+    const music = document.getElementById('bgMusic');
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let frames = 0;
+    let score = 0;
+    let gameSpeed = 7;
+    let isGameOver = false;
+    let gameActive = false;
+    const gravity = 0.6;
+    let particles = [];
+
+    class Particle {
+        constructor(x, y, color) {
+            this.x = x;
+            this.y = y;
+            this.size = Math.random() * 4 + 1;
+            this.speedX = Math.random() * 4 - 2;
+            this.speedY = Math.random() * -4 - 1;
+            this.color = color;
+        }
+        update() {
+            this.x += this.speedX;
+            this.y += this.speedY;
+            this.size *= 0.96;
+        }
+        draw() {
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    function createExplosion(x, y, color) {
+        for (let i = 0; i < 12; i++) {
+            particles.push(new Particle(x, y, color));
+        }
+    }
+
+    const player = {
+        x: 80,
+        y: canvas.height - 150,
+        width: 40,
+        height: 40,
+        dy: 0,
+        jumpPower: -13,
+        jumpCount: 0,
+        color: '#00ffcc',
+        
+        draw: function() {
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = this.color;
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.shadowBlur = 0;
+        },
+        
+        update: function() {
+            this.y += this.dy;
+            if (this.y + this.height < canvas.height - 80) {
+                this.dy += gravity;
+            } else {
+                this.dy = 0;
+                this.y = canvas.height - 80 - this.height;
+                this.jumpCount = 0;
+            }
+            this.draw();
+        },
+        
+        jump: function() {
+            if (this.jumpCount < 2) {
+                this.dy = this.jumpPower;
+                this.jumpCount++;
+                createExplosion(this.x + 20, this.y + 40, '#00ffcc');
+            }
+        }
+    };
+
+    let obstacles = [];
+    class Obstacle {
+        constructor() {
+            this.width = 30;
+            this.height = Math.random() * 50 + 30;
+            this.x = canvas.width;
+            this.y = canvas.height - 80 - this.height;
+            this.color = '#ff0055';
+        }
+        update() {
+            this.x -= gameSpeed;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = this.color;
+            ctx.fillStyle = this.color;
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    function startGame() {
+        overlay.style.display = 'none';
+        gameActive = true;
+        music.play();
+        animate();
+    }
+
+    function resetGame() {
+        obstacles = [];
+        particles = [];
+        score = 0;
+        gameSpeed = 7;
+        isGameOver = false;
+        gameOverScreen.style.display = 'none';
+        scoreElement.innerHTML = score;
+        music.currentTime = 0;
+        music.play();
+        animate();
+    }
+
+    function drawFloor() {
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height - 80);
+        ctx.lineTo(canvas.width, canvas.height - 80);
+        ctx.stroke();
+        
+        // Neon accent line
+        ctx.strokeStyle = '#00ffcc';
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#00ffcc';
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height - 82);
+        ctx.lineTo(canvas.width, canvas.height - 82);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+    }
+
+    function animate() {
+        if (isGameOver || !gameActive) return;
+        requestAnimationFrame(animate);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        drawFloor();
+        player.update();
+
+        // Particles
+        particles.forEach((p, i) => {
+            p.update();
+            p.draw();
+            if (p.size < 0.5) particles.splice(i, 1);
+        });
+
+        // Spawning
+        if (frames % 90 === 0) {
+            obstacles.push(new Obstacle());
+        }
+
+        // Obstacles & Collisions
+        obstacles.forEach((obs, i) => {
+            obs.update();
+            if (player.x < obs.x + obs.width &&
+                player.x + player.width > obs.x &&
+                player.y < obs.y + obs.height &&
+                player.y + player.height > obs.y) {
+                
+                isGameOver = true;
+                music.pause();
+                gameOverScreen.style.display = 'block';
+                createExplosion(player.x, player.y, '#ff0055');
+            }
+
+            if (obs.x + obs.width < 0) {
+                obstacles.splice(i, 1);
+                score += 10;
+                scoreElement.innerHTML = score;
+                gameSpeed += 0.1;
+            }
+        });
+
+        frames++;
+    }
+
+    // Controls
+    window.addEventListener('keydown', (e) => { if(e.code === 'Space') player.jump(); });
+    window.addEventListener('touchstart', () => { if(gameActive) player.jump(); });
+    window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    });
+</script>
+</body>
+</html>
